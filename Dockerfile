@@ -32,7 +32,10 @@ RUN apt update \
         bison \
         help2man
 
-RUN WORKDIR=$(mktemp --directory) \
+RUN ls /tmp \
+ && WORKDIR=$(mktemp --directory) \
+ && echo ${WORKDIR} \
+ && ls /tmp \
  && git clone --branch ${GIT_BRANCH} https://github.com/verilator/verilator ${WORKDIR} \
  && cd ${WORKDIR} \
  && autoconf \
