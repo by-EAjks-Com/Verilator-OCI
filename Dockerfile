@@ -33,6 +33,7 @@ RUN apt update \
         help2man
 
 RUN WORKDIR=$(mktemp --directory) \
+ && sleep 1 \
  && git clone --branch ${GIT_BRANCH} https://github.com/verilator/verilator ${WORKDIR} \
  && cd ${WORKDIR} \
  && autoconf \
@@ -41,6 +42,14 @@ RUN WORKDIR=$(mktemp --directory) \
  && make install
 
 FROM ubuntu:25.10 AS deploy
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update \
+ && apt install --yes --no-install-recommends \
+        perl \
+  && apt autoremove --yes --purge \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/verilator /usr/local/verilator
 
