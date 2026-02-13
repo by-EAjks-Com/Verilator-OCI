@@ -48,7 +48,7 @@ jobs:
             VERSION=${TAG%-*}
             echo "git-branch=${VERSION}" >> $GITHUB_OUTPUT
           else
-            echo "git-branch=" >> $GITHUB_OUTPUT
+            echo "git-branch=v5.044" >> $GITHUB_OUTPUT
           fi
       # https://github.com/actions/checkout/tags
       - name: Checkout the Git repository
