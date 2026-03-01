@@ -1,0 +1,124 @@
+#   Verilator OCI
+#   Copyright (c) 2026 Andrea and Eric DELAGE <Contact@by-EAjks.Com>
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+name: Default CI/CD Pipeline
+
+on:
+  pull_request:
+    branches:
+      - 'main'
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v\d+.\d+-\d+'
+
+env:
+  IMAGE_REPOSITORY: eajkseajks
+  IMAGE_NAME: verilator
+
+jobs:
+  build-and-push-container-image:
+    name: Build and push the container image
+    permissions:
+      contents: read
+      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - id: extract-tag
+        name: Extract tag version
+        run: |
+          if [[ "${{github.ref}}" == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG%-*}
+            echo "git-branch=${VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "git-branch=v5.044" >> $GITHUB_OUTPUT
+          fi
+      # https://github.com/actions/checkout/tags
+      - name: Checkout the Git repository
+        uses: actions/checkout@v6
+      # https://github.com/docker/setup-buildx-action/tags
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      # https://github.com/sigstore/cosign-installer/tags
+      # https://github.com/sigstore/cosign/releases
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.0.0
+        with:
+          cosign-release: v3.0.4
+      # https://github.com/docker/login-action/tags
+      - name: Login into Docker.IO
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{secrets.DOCKER_HUB_USERNAME}}
+          password: ${{secrets.DOCKER_HUB_ACCESS_TOKEN}}
+      # https://github.com/docker/metadata-action/tags
+      - id: extract-metadata
+        name: Extract Docker metadata
+        uses: docker/metadata-action@v5
+        with:
+          context: workflow
+          images: |
+            ${{env.IMAGE_REPOSITORY}}/${{env.IMAGE_NAME}}
+          tags: |
+            type=ref,event=branch
+            type=ref,prefix=pr-,event=pr
+            type=match,pattern=v\d+.\d+-\d+
+            type=match,pattern=v\d+.\d+
+            type=match,pattern=v\d+
+            type=sha,prefix=sha-,format=short
+            type=raw,enable={{is_default_branch}},value=latest
+      # https://github.com/docker/build-push-action/tags
+      - id: build-and-push
+        name: Build and push the container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: ${{steps.extract-metadata.outputs.tags}}
+          labels: ${{steps.extract-metadata.outputs.labels}}
+          build-args: |
+            GIT_BRANCH=${{steps.extract-tag.outputs.git-branch}}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # https://github.com/aquasecurity/trivy-action/tags
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.34.1
+        with:
+          scan-type: image
+          image-ref: ${{env.IMAGE_REPOSITORY}}/${{env.IMAGE_NAME}}@${{steps.build-and-push.outputs.digest}}
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: 1
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+      # https://github.com/codeql-action/upload-sarif/tags
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+      - name: Sign the published container image (using Cosign)
+        env:
+          TAGS: ${{steps.extract-metadata.outputs.tags}}
+          DIGEST: ${{steps.build-and-push.outputs.digest}}
+        run: |
+          for TAG in ${TAGS}; do
+            cosign sign --yes ${TAG}@${DIGEST}
+          done
