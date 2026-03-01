@@ -35,6 +35,7 @@ jobs:
     name: Build and push the container image
     permissions:
       contents: read
+      id-token: write
       security-events: write
     runs-on: ubuntu-latest
     steps:
