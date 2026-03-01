@@ -115,10 +115,5 @@ jobs:
           sarif_file: trivy-results.sarif
         continue-on-error: true
       - name: Sign the published container image (using Cosign)
-        env:
-          TAGS: ${{steps.extract-metadata.outputs.tags}}
-          DIGEST: ${{steps.build-and-push.outputs.digest}}
         run: |
-          for TAG in ${TAGS}; do
-            cosign sign --yes ${TAG}@${DIGEST}
-          done
+          cosign sign --yes ${{env.IMAGE_REPOSITORY}}/${{env.IMAGE_NAME}}@${{steps.build-and-push.outputs.digest}}
